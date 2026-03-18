@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aesthetic AI Expressions Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+</head>
+<body>
+  <div class="blob-bg blob-1"></div>
+  <div class="blob-bg blob-2"></div>
+  
+  <div class="page-shell">
+    <header class="hero slide-in-up">
+      <div class="hero-badge">AESTHETIC & FAST • TEACHABLE MACHINE
+      </div>
+      <div class="hero-badge">MADE BY: KHUSHI JAGWANI
+      </div>
+      <h1>Facial Expression AI</h1>
+      <p>Beautiful, robust real-time tracking with smooth confidence intervals.</p>
+    </header>
+
+    <main class="main-grid">
+      <!-- Media Panel -->
+      <section class="panel glass scale-in" style="animation-delay: 0.1s;">
+        <div class="panel-header">
+          <div>
+            <h2>Input Source</h2>
+            <p>Connect your camera or upload a face.</p>
+          </div>
+          <div id="modelStatus" class="status-chip loading">Connecting...</div>
+        </div>
+
+        <div class="viewer-card">
+          <div class="viewer-top-tabs">
+            <button id="webcamTab" class="tab-btn active" onclick="switchMode('webcam')">Camera</button>
+            <button id="uploadTab" class="tab-btn" onclick="switchMode('upload')">Upload</button>
+          </div>
+
+          <div class="viewer-box">
+            <video id="webcam" class="media-view hidden" autoplay playsinline></video>
+            <img id="uploadedPreview" class="media-view hidden" alt="Uploaded Preview" />
+            <canvas id="snapshotCanvas" class="hidden"></canvas>
+
+            <div id="placeholderState" class="placeholder-state">
+              <div class="placeholder-icon float-anim">📸</div>
+              <h3>Awaken the AI</h3>
+              <p>Start your camera to begin detecting expressions.</p>
+            </div>
+          </div>
+
+          <div class="controls-grid">
+            <button class="primary-btn pulse-glow" onclick="startCamera()">Start Camera</button>
+            <button class="secondary-btn" onclick="stopCamera()">Stop Camera</button>
+            <label class="upload-btn">
+              Upload Image
+              <input type="file" id="imageUpload" accept="image/*" hidden />
+            </label>
+            <button class="secondary-btn" onclick="classifyUploadedImage()">Classify Input</button>
+            <button class="secondary-btn" onclick="captureSnapshot()">Take Snapshot</button>
+            <button class="secondary-btn" onclick="downloadSnapshot()">Download Image</button>
+          </div>
+
+          <div id="cameraMessage" class="message-box info">
+            Initializing systems...
+          </div>
+        </div>
+      </section>
+
+      <!-- Dashboard Panel -->
+      <section class="panel glass scale-in" style="animation-delay: 0.2s;">
+        <div class="panel-header">
+          <div>
+            <h2>Magic Dashboard</h2>
+            <p>Smooth telemetry and real-time insights.</p>
+          </div>
+          <div class="status-chip success">Active</div>
+        </div>
+
+        <div class="prediction-highlight">
+          <div class="prediction-left">
+            <div class="prediction-icon" id="expressionEmoji">🧐</div>
+            <div>
+              <div class="mini-label">Current Mood</div>
+              <div id="topClass" class="top-class">Observing...</div>
+              <div id="topConfidence" class="top-confidence">Confidence: 0.0%</div>
+            </div>
+          </div>
+          <div id="predictionState" class="prediction-state">Idle</div>
+        </div>
+
+        <div class="section-title">Telemetry</div>
+        <div id="predictionList" class="prediction-list"></div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Engine</div>
+            <div class="stat-value">TF.js JS</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Focus</div>
+            <div id="currentModeText" class="stat-value">Webcam</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Classes</div>
+            <div id="classCount" class="stat-value">0</div>
+          </div>
+        </div>
+
+        <div class="history-header">
+          <div class="section-title">Recent Detections</div>
+          <button class="tiny-btn" onclick="clearHistory()">Clear</button>
+        </div>
+        <div id="historyBox" class="history-box">
+          <div class="history-empty">No logged expressions</div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer Features -->
+    <section class="feature-grid">
+      <div class="feature-card tilt-anim" style="animation-delay: 0.3s;">
+        <div class="feature-step">01</div>
+        <h3>Smooth Tracking</h3>
+        <p>A moving average filter removes jitters and ensures confident expression predictions.</p>
+      </div>
+      <div class="feature-card tilt-anim" style="animation-delay: 0.4s;">
+        <div class="feature-step">02</div>
+        <h3>Glassmorphism UI</h3>
+        <p>A beautiful aesthetic light theme crafted with colorful vibrant gradients.</p>
+      </div>
+      <div class="feature-card tilt-anim" style="animation-delay: 0.5s;">
+        <div class="feature-step">03</div>
+        <h3>Vivid Animations</h3>
+        <p>Expression changes trigger dynamic emoji pop-ins and visual highlighting.</p>
+      </div>
+      <div class="feature-card tilt-anim" style="animation-delay: 0.6s;">
+        <div class="feature-step">04</div>
+        <h3>Seamless Snapshots</h3>
+        <p>Capture real-time webcam frames right into an image for instant evaluation.</p>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
