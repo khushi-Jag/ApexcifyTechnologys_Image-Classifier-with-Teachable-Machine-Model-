@@ -22,8 +22,7 @@ const historyBox = document.getElementById("historyBox");
 const snapshotCanvas = document.getElementById("snapshotCanvas");
 const expressionEmoji = document.getElementById("expressionEmoji");
 
-const modelURL = "./tm-model/model.json";
-const metadataURL = "./tm-model/metadata.json";
+const MODEL_URL = "https://teachablemachine.withgoogle.com/models/P8bbHDV3K/";
 
 function getEmojiForExpression(expr) {
     const e = expr.toLowerCase();
@@ -43,26 +42,41 @@ imageUpload.addEventListener("change", function () {
 
     const reader = new FileReader();
     reader.onload = function (e) {
+        uploadedPreview.onload = async () => {
+            setMessage("Image loaded. Analyzing...", "info");
+            await classifyUploadedImage();
+        };
         uploadedPreview.src = e.target.result;
         uploadedPreview.classList.remove("hidden");
         webcam.classList.add("hidden");
         placeholderState.classList.add("hidden");
-        setMessage("Image uploaded successfully. Click 'Classify Upload'.", "success");
     };
     reader.readAsDataURL(file);
 });
 
 async function loadModel() {
     try {
-        model = await tmImage.load(modelURL, metadataURL);
+        if (!MODEL_URL || MODEL_URL.includes("YOUR_MODEL_ID")) {
+            setMessage("Please add your Model URL in app.js", "error");
+            modelStatus.textContent = "URL Missing";
+            return;
+        }
+
+        const modelJSON = MODEL_URL + "model.json";
+        const metadataJSON = MODEL_URL + "metadata.json";
+        
+        console.log("Loading hosted model from:", MODEL_URL);
+        model = await tmImage.load(modelJSON, metadataJSON);
+        
         classCount.textContent = model.getTotalClasses();
-        modelStatus.textContent = "Model Loaded";
+        modelStatus.textContent = "Model Connected";
         modelStatus.className = "status-chip success";
+        setMessage("Connected to Teachable Machine.", "success");
     } catch (error) {
-        modelStatus.textContent = "Model Error";
+        modelStatus.textContent = "Connection Error";
         modelStatus.className = "status-chip loading";
-        setMessage("Model files could not be loaded. Check tm-model folder.", "error");
-        console.error(error);
+        setMessage("Failed to connect to hosted model URL.", "error");
+        console.error("Hosted Model Error:", error);
     }
 }
 
@@ -88,7 +102,6 @@ function switchMode(mode) {
         stopCamera();
         webcam.classList.add("hidden");
         
-        // Restore uploaded image view if it exists
         if (uploadedPreview.getAttribute("src")) {
             uploadedPreview.classList.remove("hidden");
             placeholderState.classList.add("hidden");
@@ -103,19 +116,25 @@ async function startCamera() {
     switchMode("webcam");
 
     try {
-        webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const constraints = { video: true, audio: false };
+        webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
         webcam.srcObject = webcamStream;
-        webcam.classList.remove("hidden");
-        uploadedPreview.classList.add("hidden");
-        placeholderState.classList.add("hidden");
+        
+        webcam.onloadeddata = () => {
+            webcam.play();
+            webcam.classList.remove("hidden");
+            uploadedPreview.classList.add("hidden");
+            placeholderState.classList.add("hidden");
+            
+            setMessage("Camera Live.", "success");
+            predictionState.textContent = "Live";
+            startPredictionLoop();
+        };
 
-        setMessage("Camera started successfully. Real-time prediction is active.", "success");
-        predictionState.textContent = "Live";
-        startPredictionLoop();
     } catch (error) {
-        setMessage("Camera permission denied or camera unavailable. Please allow access and try again.", "error");
+        setMessage("Camera access denied.", "error");
         predictionState.textContent = "Error";
-        console.error(error);
+        console.error("Camera Error:", error);
     }
 }
 
@@ -132,7 +151,7 @@ function stopCamera() {
         placeholderState.classList.remove("hidden");
     }
 
-    setMessage("Camera stopped.", "info");
+    setMessage("Camera Stopped.", "info");
     predictionState.textContent = "Stopped";
 }
 
@@ -140,12 +159,26 @@ async function startPredictionLoop() {
     if (!model || !webcamStream) return;
 
     isPredicting = true;
-    predictionHistoryBuffer = []; // reset buffer
+    predictionHistoryBuffer = []; 
 
-    while (isPredicting && webcamStream) {
-        await runPrediction(webcam);
-        await new Promise(resolve => setTimeout(resolve, 150)); // Fast loop for smoother real-time feel
-    }
+    const loop = async () => {
+        if (!isPredicting || !webcamStream) return;
+        
+        try {
+            if (webcam.readyState === 4) {
+                // Webcam feed should be flipped horizontally for user perception
+                await runPrediction(webcam, true); 
+            }
+        } catch (e) {
+            console.warn("Loop error:", e);
+        }
+        
+        if (isPredicting) {
+            requestAnimationFrame(loop);
+        }
+    };
+    
+    requestAnimationFrame(loop);
 }
 
 async function classifyUploadedImage() {
@@ -155,91 +188,97 @@ async function classifyUploadedImage() {
         return;
     }
 
-    predictionState.textContent = "Upload Mode";
-    predictionHistoryBuffer = []; // reset for single image
-    await runPrediction(uploadedPreview);
+    try {
+        predictionState.textContent = "Analyzing...";
+        // Final decoding check
+        if (uploadedPreview.decode) await uploadedPreview.decode();
+        
+        // Use a standardized canvas capture for the model
+        // Teachable Machine Image models expect 224x224
+        const canvas = document.createElement("canvas");
+        canvas.width = 224;
+        canvas.height = 224;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(uploadedPreview, 0, 0, 224, 224);
+        
+        // Pass false for 'flip' (it's a photo)
+        await runPrediction(canvas, false);
+        predictionState.textContent = "Analysis Done";
+    } catch (e) {
+        console.error("Analysis Error:", e);
+        setMessage("Failed to analyze image.", "error");
+    }
 }
 
-async function runPrediction(sourceElement) {
+async function runPrediction(sourceElement, flip = false) {
     try {
-        const rawPredictions = await model.predict(sourceElement);
+        if (!model) return;
         
-        // Add to buffer
-        predictionHistoryBuffer.push(rawPredictions);
-        if (predictionHistoryBuffer.length > SMOOTHING_FRAMES) {
-            predictionHistoryBuffer.shift();
-        }
+        // Model Prediction with Teachable Machine high-level API
+        const rawPredictions = await model.predict(sourceElement, flip);
+        
+        if (!rawPredictions || rawPredictions.length === 0) return;
 
-        // Calculate Average Predictions over buffer safely by class name
-        const avgPredictions = rawPredictions.map((pred) => {
-            let sum = 0;
-            let validCount = 0;
-            for(let j=0; j<predictionHistoryBuffer.length; j++) {
-                const pastPred = predictionHistoryBuffer[j].find(p => p.className === pred.className);
-                if (pastPred && typeof pastPred.probability === 'number' && !isNaN(pastPred.probability)) {
-                    sum += pastPred.probability;
-                    validCount++;
-                }
-            }
-            
-            let finalProb = validCount > 0 ? sum / validCount : pred.probability;
-            if (isNaN(finalProb) || finalProb === undefined) finalProb = 0;
+        // Diagnostic Log (Uncomment to debug in browser)
+        // console.log("Raw Output:", rawPredictions);
 
-            return {
-                className: pred.className,
-                probability: finalProb
-            };
-        });
+        const predictions = rawPredictions.map(p => ({
+            className: p.className,
+            probability: Number(p.probability) || 0
+        })).sort((a, b) => b.probability - a.probability);
 
-        avgPredictions.sort((a, b) => b.probability - a.probability);
-
-        renderPredictions(avgPredictions);
+        renderPredictions(predictions);
     } catch (error) {
-        console.error(error);
-        if (currentMode !== "webcam") {
-            setMessage("Prediction failed. Please check model files and input source.", "error");
-        }
+        console.error("Prediction Error:", error);
     }
+}
+
+function formatLabel(label) {
+    const mapping = {
+        "HAPPY FACE": "Happy Face",
+        "SAD FACE": "Sad Face",
+        "NEUTRAL FACE": "Neutral Face"
+    };
+    return mapping[label] || label;
 }
 
 function renderPredictions(predictions) {
     predictionList.innerHTML = "";
-
     if (!predictions || predictions.length === 0) return;
 
     const top = predictions[0];
-    const confidenceValue = top.probability * 100;
-    const confidenceStr = confidenceValue.toFixed(1);
+    const confidenceValue = (top.probability * 100);
+    const readableLabel = formatLabel(top.className);
+    
+    topClass.textContent = readableLabel;
+    topConfidence.textContent = `Confidence: ${confidenceValue.toFixed(1)}%`;
+    
+    // Improved confidence thresholds
+    predictionState.textContent = confidenceValue >= 75 ? "High Confidence" : confidenceValue >= 25 ? "Medium Confidence" : "Low Confidence";
 
-    topClass.textContent = top.className;
-    topConfidence.textContent = `Confidence: ${confidenceStr}%`;
-    predictionState.textContent = confidenceValue >= 80 ? "High Confidence" : confidenceValue >= 50 ? "Medium Confidence" : "Low Confidence";
-
-    // Handle Expression Animation
-    if (lastTopExpression !== top.className && confidenceValue > 60) {
-        lastTopExpression = top.className;
+    // Handle Emoji and History (Confidence > 20% for better feedback)
+    if (confidenceValue > 20) {
         expressionEmoji.textContent = getEmojiForExpression(top.className);
-        
-        // Trigger Animation via CSS classes
         expressionEmoji.classList.remove("pop-in");
-        void expressionEmoji.offsetWidth; // trigger reflow
+        void expressionEmoji.offsetWidth;
         expressionEmoji.classList.add("pop-in");
         
-        // Optionally add to history if it changed and holds a decent confidence
-        addHistory(top);
+        if (lastTopExpression !== top.className) {
+            lastTopExpression = top.className;
+            addHistory({ className: readableLabel, probability: top.probability });
+        }
     }
 
     predictions.forEach((item, index) => {
+        const itemLabel = formatLabel(item.className);
         const value = (item.probability * 100).toFixed(1);
         const card = document.createElement("div");
         card.className = "prediction-item";
-        
-        // Make the top card stand out
-        if (index === 0 && confidenceValue > 50) card.classList.add("active-prediction");
+        if (index === 0 && item.probability > 0.25) card.classList.add("active-prediction");
 
         card.innerHTML = `
             <div class="prediction-row">
-                <div class="prediction-name">${item.className}</div>
+                <div class="prediction-name">${itemLabel}</div>
                 <div class="prediction-value">${value}%</div>
             </div>
             <div class="progress-track">
